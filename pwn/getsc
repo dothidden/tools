@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+# Credits to unixist for most of the code here
+# https://github.com/unixist/seccomp-bypass
+
+file=$1
+sc=$(as $file -o $file.o; objdump -D $file.o | grep -A10000 '<_start>' | sed -e 's/.*\t\([[:alnum:]].*\)\t.*/\1/' | cut -f2- -d: | sed ':a;/$/{N;s/\n//;ba}' | sed 's/^/\\x/' | sed -e 's/[[:space:]]\+\([[:alnum:]]\)/\\x\1/g' | sed -e 's/[[:space:]]\+$//' | sed 's/\\x/\n/g' | column -c 10000 -x | sed 's/^/\\x/; s/\t/\\x/g' | sed '1 s/^/"/;1 s/$/"/; 2,$ s/^\(.*\)/                   "\1"/')
+rm $file.o
+cat << EOF > $file.c
+#include <stdint.h>
+#include <sys/mman.h>
+
+unsigned char shellcode[] = $sc;
+
+int main(){
+  mprotect((void *)((uint64_t)shellcode & ~4095), 4096, PROT_READ|PROT_WRITE|PROT_EXEC);
+  (*(void(*)()) shellcode)();
+  return 0;
+}
+EOF
+
+gcc $file.c -o run
+cat $file.c
+rm $file.c
